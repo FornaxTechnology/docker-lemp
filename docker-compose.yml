@@ -1,0 +1,127 @@
+services:
+
+    ### NGINX ######################################################################################
+    nginx: &nginx
+        build:
+            context: './nginx'
+        restart: unless-stopped
+        ports:
+            - '80:80'
+            - '443:443'
+        volumes:
+            - '..:/var/www/html'
+        depends_on:
+            php:
+                condition: service_started
+        networks:
+            - lemp
+    nginx-prod:
+        <<: *nginx
+        target: nginx-prod
+        environment:
+            - NGINX_HOST='example.com'
+    nginx-dev:
+        <<: *nginx
+        target: nginx-dev
+        environment:
+            - NGINX_HOST='localhost'
+
+    ### PHP ########################################################################################
+    php: &php
+        build:
+            context: './php'
+            args:
+                PHP_GD: true
+        restart: unless-stopped
+        ports:
+            - '9000:9000'
+        volumes:
+            - '..:/var/www/html'
+        networks:
+            - lemp
+    php-fpm:
+        <<: *php
+    php-cli:
+        <<: *php
+
+    ### MySQL ######################################################################################
+    mysql:
+        image: mysql:8
+        restart: unless-stopped
+        ports:
+            - '${DB_PORT:-3306}:3306'
+        environment:
+            MYSQL_DATABASE: '${DB_DATABASE}'
+            MYSQL_USER: '${DB_USERNAME}'
+            MYSQL_PASSWORD: '${DB_PASSWORD}'
+        networks:
+            - lemp
+
+    ### Memcached ##################################################################################
+    memcached:
+        image: memcached/alpine
+        restart: unless-stopped
+        ports:
+            - '${MEMCACHED_HOST_PORT:-11211}:11211'
+        command: [ 'memcached' ]
+        networks:
+            - lemp
+
+    ### Redis ######################################################################################
+    redis:
+        image: redis/alpine
+        restart: unless-stopped
+        ports:
+            - '${REDIS_PORT:-6379}:6379'
+        healthcheck:
+            test: [ 'CMD', 'redis-cli', 'ping' ]
+            retries: 3
+            timeout: 5s
+        networks:
+            - lemp
+
+    ### PHPMyAdmin #################################################################################
+    pma:
+        image: 'phpmyadmin:latest'
+        restart: unless-stopped
+        ports:
+            - '${PMA_PORT:-8081}:80'
+        environment:
+            PMA_HOST: mysql
+            PMA_PORT: '${DB_PORT:-3306}'
+            PMA_MAX_EXECUTION_TIME: 600
+            PMA_MEMORY_LIMIT: 512M
+            UPLOAD_LIMIT: 4G
+        depends_on:
+            mysql:
+                condition: service_started
+        networks:
+            - lemp
+
+    ### Mailpit ####################################################################################
+    mailpit:
+        image: axllent/mailpit:latest
+        restart: unless-stopped
+        ports:
+            - '${MAIL_PORT:-2525}:2525'
+            - '${MAIL_HTTP_PORT:-8025}:8025'
+        networks:
+            - lemp
+
+    ### Mailhog ####################################################################################
+    mailhog:
+        image: mailhog/mailhog:latest
+        restart: unless-stopped
+        ports:
+            - '${MAIL_PORT:-2525}:2525'
+            - '${MAIL_HTTP_PORT:-8025}:8025'
+        volumes:
+            - './mailhog/maildir:/maildir'
+        command: [ '-storage=maildir', '-maildir-path=/maildir' ]
+        networks:
+            - lemp
+
+####################################################################################################
+networks:
+    lemp:
+        driver: bridge
